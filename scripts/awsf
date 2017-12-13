@@ -4,6 +4,7 @@
 import awsf
 from datetime import datetime
 import sys
+import cProfile
 
 def run():
     start = datetime.now()

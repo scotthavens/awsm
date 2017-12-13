@@ -16,6 +16,20 @@ from awsf.interface import smrf_ipysnobal as smrf_ipy
 from smrf import __core_config__ as __smrf_core_config__
 from awsf import __core_config__ as __awsf_core_config__
 
+import yappi
+from yappi import COLUMNS_FUNCSTATS, COLUMNS_THREADSTATS
+
+def print_all(stats, out, limit=None):
+    if stats.empty():
+        print('No stats')
+    sizes = [36, 5, 8, 8, 8]
+    columns = dict(zip(range(len(COLUMNS_FUNCSTATS)), zip(COLUMNS_FUNCSTATS, sizes)))
+    show_stats = stats
+    if limit:
+        show_stats = stats[:limit]
+    out.write(os.linesep)
+    for stat in show_stats:
+        stat._print(out, columns)
 
 class AWSF():
     """
@@ -302,7 +316,14 @@ class AWSF():
         Calls :mod: `awsf.interface.smrf_ipysnobal.run_smrf_ipysnobal`
         """
 
+        yappi.start()
         smrf_ipy.run_smrf_ipysnobal(self)
+        stats = yappi.get_func_stats().sort(
+        sort_type='totaltime', sort_order='desc')
+        # returns all stats with sorting applied
+        print_all(stats, sys.stdout, limit=30)
+        #yappi.get_func_stats().print_all()
+        #yappi.get_thread_stats().print_all()
 
     def restart_crash_image(self):
         """
