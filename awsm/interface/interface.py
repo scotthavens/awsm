@@ -260,6 +260,76 @@ def run_isnobal(myawsm):
     os.chdir(cwd)
 
 
+def run_snobal(myawsm):
+    '''
+    Run Snobal point model from command line.
+
+    Args:
+        myawsm: AWSM instance
+
+    Usage:
+    snobal -z elev -t timestep[,timestep,timestep,timestep] [-m max-h2o]
+           [-d max-active] [-s snfile] [-h mhfile] [-p prfile] [-i infile]
+           [-o outfile] [-O mode] [-c] [-K]
+           [-T mass threshold[,mass threshold,mass threshold]]
+
+    Options:
+    	z	site elevation (m)
+    	t	time steps: data [normal, [,medium [,small]]] (minutes)
+    	m	snowcover's maximum h2o content as volume ratio
+    	d	maximum depth for active layer (m)
+    	s	snow properties input data file
+    	h	measurement heights input data file
+    	p	precipitation input data file
+    	i	optional input data file
+    	o	optional output data file
+    	O	how often output records written (data, normal, all)
+    	c	continue run even when no snowcover
+    	K	accept temperatures in degrees K
+    	T	run timesteps' thresholds for a layer's mass (kg/m^2)
+
+    '''
+
+    myawsm._logger.info('Setting up to run iSnobal')
+
+    # develop the command to run the model
+    myawsm._logger.debug("Developing command and running iSnobal")
+
+    """
+    Still need to get elevation
+    """
+    
+    # make paths absolute if they are not
+    cwd = os.getcwd()
+
+    # thresholds for iSnobal
+    mass_thresh = '{},{},{}'.format(myawsm.mass_thresh[0],
+                                    myawsm.mass_thresh[1],
+                                    myawsm.mass_thresh[2])
+
+    run_cmd = 'snobal -z %f -t 60 -h %s -p %s -i %s\
+              -o %s -c' % (myawsm.point_elevation,
+                           myawsm.fp_ht,
+                           myawsm.fp_ppt,
+                           myawsm.fp_in,
+                           os.path.join(myawsm.pathro, 'snobal_out'))
+
+    # change directories, run, and move back
+    myawsm._logger.debug("Running {}".format(run_cmd))
+    os.chdir(myawsm.pathro)
+    # call iSnobal
+    p = subprocess.Popen(run_cmd, shell=True, stdout=subprocess.PIPE,
+                         stderr=subprocess.PIPE)
+
+    while True:
+        line = p.stdout.readline()
+        myawsm._logger.info(line)
+        if not line:
+            break
+
+    os.chdir(cwd)
+
+
 def restart_crash_image(myawsm):
     '''
     Restart iSnobal from crash. Read in last output, zero depths smaller than

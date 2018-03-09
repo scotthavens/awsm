@@ -7,6 +7,73 @@ import netCDF4 as nc
 import glob
 
 
+def csv_to_snobal(myawsm, runtype):
+    '''
+    Function to create snobal forcing files from point csv smrf ouputs
+    Args:
+        myawsm: AWSM instance
+        runtype: either 'smrf' for standard run or 'forecast' for gridded data run
+    '''
+    var_list = ['net_solar', 'thermal', 'air_temp', 'vapor_pressure',
+                'wind_speed']
+    ppt_list = ['precip', 'percent_snow', 'snow_density', 'dew_point']
+    ppt_df_list = ['wyhr', 'precip', 'percent_snow', 'snow_density', 'dew_point']
+    # set up df for forcing
+    df_in = pd.DataFrame(columns=var_list)
+    # set up df for ppt
+    df_ppt = pd.DataFrame(columns=ppt_df_list)
+
+    # read in files
+    df = pd.read_csv(os.path.join(myawsm.paths, ppt_list[0]+'.csv'))
+    start = df['date_time'].values[0]
+    # get start of simulation in wyhr
+    start_wyhr = int(smrf.utils.utils.water_day(start)[0]*24)
+    # get list of wyhrs from start
+    wyhrs = start_wyhr + range(len(df['date_time'].values))
+    # assign to df
+    df_ppt['wyhr'] = wyhrs
+    df_ppt[ppt_list[0]] = df[ppt_list[0]].values
+    del(df)
+
+    # now get rest of variables
+    for v in ppt_list[1:]:
+        df = pd.read_csv(os.path.join(myawsm.paths, v+'.csv'))
+        df_ppt[v] = df[v].values
+        del(df)
+
+    for v in var_list:
+        df = pd.read_csv(os.path.join(myawsm.paths, v+'.csv'))
+        df_in[v] = df[v].values
+        del(df)
+    # assign ground temp
+    df_in['ground_temp'] = myawsm.ground_temp*np.ones(len(wyhrs))
+
+    # write out input files
+    fp_in = os.path.join(pathi, 'snobal_inputs.txt')
+    fp_ppt = os.path.join(pathi, 'snoabl_ppt.txt')
+    fp_ht = os.path.join(pathi, 'height_file.txt')
+
+    myawsm._logger.info('Writing to {}'.format(fp_in))
+    df_in.to_csv(fp_in, sep='', header=False, index=False, columns=var_list)
+
+    myawsm._logger.info('Writing to {}'.format(fp_ppt))
+    df_in.to_csv(fp_ppt, sep='', header=False, index=False, columns=ppt_df_list)
+
+    df_height = pd.DataFrame()
+    df_height['wyhr'] = start_wyhr
+    df_height['z_u'] = 5.0
+    df_height['z_T'] = 5.0
+    df_height['z_0'] = 0.005
+    df_height['z_g'] = 0.5
+    ht_list = ['wyhr', 'z_u', 'z_T', 'z_0', 'z_g']
+
+    myawsm._logger.info('Writing to {}'.format(fp_ft))
+    df_in.to_csv(fp_ft, sep='', header=False, index=False, columns=ht_list
+
+    myawsm.fp_in = fp_in
+    myawsm.fp_ppt = fp_ppt
+    myawsm.fp_ht = fp_ht
+
 def nc2ipw_mea(myawsm, runtype):
     '''
     Function to create iSnobal forcing and precip images from smrf ouputs
