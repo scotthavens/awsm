@@ -3,17 +3,21 @@ from smrf import ipw
 import os
 import sys
 import numpy as np
+import pandas as pd
 import netCDF4 as nc
 import glob
 
 
-def csv_to_snobal(myawsm, runtype):
+def csv_to_snobal(myawsm):
     '''
     Function to create snobal forcing files from point csv smrf ouputs
     Args:
         myawsm: AWSM instance
         runtype: either 'smrf' for standard run or 'forecast' for gridded data run
     '''
+    # seperate upon csv writing
+    sep = '\t'
+    # variables
     var_list = ['net_solar', 'thermal', 'air_temp', 'vapor_pressure',
                 'wind_speed']
     ppt_list = ['precip', 'percent_snow', 'snow_density', 'dew_point']
@@ -26,12 +30,15 @@ def csv_to_snobal(myawsm, runtype):
     # read in files
     df = pd.read_csv(os.path.join(myawsm.paths, ppt_list[0]+'.csv'))
     start = df['date_time'].values[0]
+    start = pd.to_datetime(start)
+    startz = start.replace(tzinfo=myawsm.tzinfo)
     # get start of simulation in wyhr
-    start_wyhr = int(smrf.utils.utils.water_day(start)[0]*24)
+    start_wyhr = int(smrf.utils.utils.water_day(startz)[0]*24)
     # get list of wyhrs from start
-    wyhrs = start_wyhr + range(len(df['date_time'].values))
+    wyhrs = range(len(df['date_time'].values))
+    wyhrs = np.array(wyhrs) + start_wyhr
     # assign to df
-    df_ppt['wyhr'] = wyhrs
+    df_ppt['wyhr'] = wyhrs.astype(float)
     df_ppt[ppt_list[0]] = df[ppt_list[0]].values
     del(df)
 
@@ -46,33 +53,39 @@ def csv_to_snobal(myawsm, runtype):
         df_in[v] = df[v].values
         del(df)
     # assign ground temp
-    df_in['ground_temp'] = myawsm.ground_temp*np.ones(len(wyhrs))
+    df_in['ground_temp'] = myawsm.soil_temp*np.ones(len(wyhrs))
+    var_list.append('ground_temp')
 
-    # write out input files
-    fp_in = os.path.join(pathi, 'snobal_inputs.txt')
-    fp_ppt = os.path.join(pathi, 'snoabl_ppt.txt')
-    fp_ht = os.path.join(pathi, 'height_file.txt')
+    myawsm._logger.info('Writing to {}'.format(myawsm.fp_in))
+    df_in.to_csv(myawsm.fp_in, sep=sep, header=False, index=False, columns=var_list)
 
-    myawsm._logger.info('Writing to {}'.format(fp_in))
-    df_in.to_csv(fp_in, sep='', header=False, index=False, columns=var_list)
+    myawsm._logger.info('Writing to {}'.format(myawsm.fp_ppt))
+    df_ppt.to_csv(myawsm.fp_ppt, sep=sep, header=False, index=False, columns=ppt_df_list)
 
-    myawsm._logger.info('Writing to {}'.format(fp_ppt))
-    df_in.to_csv(fp_ppt, sep='', header=False, index=False, columns=ppt_df_list)
-
+    # height file
     df_height = pd.DataFrame()
-    df_height['wyhr'] = start_wyhr
-    df_height['z_u'] = 5.0
-    df_height['z_T'] = 5.0
-    df_height['z_0'] = 0.005
-    df_height['z_g'] = 0.5
+    df_height['wyhr'] = [float(start_wyhr)]
+    df_height['z_u'] = [5.0]
+    df_height['z_T'] = [5.0]
+    df_height['z_0'] = [0.005]
+    df_height['z_g'] = [0.5]
     ht_list = ['wyhr', 'z_u', 'z_T', 'z_0', 'z_g']
 
-    myawsm._logger.info('Writing to {}'.format(fp_ft))
-    df_in.to_csv(fp_ft, sep='', header=False, index=False, columns=ht_list
+    myawsm._logger.info('Writing to {}'.format(myawsm.fp_ht))
+    df_height.to_csv(myawsm.fp_ht, sep=sep, header=False, index=False, columns=ht_list)
 
-    myawsm.fp_in = fp_in
-    myawsm.fp_ppt = fp_ppt
-    myawsm.fp_ht = fp_ht
+    # snow file
+    df_sn = pd.DataFrame()
+    df_sn['wyhr'] = [float(start_wyhr)]
+    df_sn['depth'] = [0]
+    df_sn['density'] = [0]
+    df_sn['sfc_temp'] = [0]
+    df_sn['cover_temp'] = [0]
+    df_sn['h2o_sat'] = [0]
+    sn_list = ['wyhr', 'depth', 'density', 'sfc_temp', 'cover_temp', 'h2o_sat']
+    myawsm._logger.info('Writing to {}'.format(myawsm.fp_sn))
+    df_sn.to_csv(myawsm.fp_sn, sep=sep, header=False, index=False, columns=sn_list)
+
 
 def nc2ipw_mea(myawsm, runtype):
     '''

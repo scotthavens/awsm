@@ -195,6 +195,10 @@ class AWSM():
         elif self.topotype == 'netcdf':
             self.fp_dem = os.path.abspath(self.config['topo']['filename'])
 
+        self.point_model = False
+        if self.config['topo']['type'] == 'point':
+            self.point_model = True
+
         # init file just for surface roughness
         if self.config['files']['roughness_init'] is not None:
             self.roughness_init = \
@@ -291,23 +295,23 @@ class AWSM():
         Now that the directory structure is done, create log file and print out
         saved logging statements.
         '''
-        
+
         level_styles = {'info': {'color': 'white'},
-                        'notice': {'color': 'magenta'}, 
-                        'verbose': {'color': 'blue'}, 
-                        'success': {'color': 'green', 'bold': True}, 
-                        'spam': {'color': 'green', 'faint': True}, 
-                        'critical': {'color': 'red', 'bold': True}, 
-                        'error': {'color': 'red'}, 
-                        'debug': {'color': 'green'}, 
+                        'notice': {'color': 'magenta'},
+                        'verbose': {'color': 'blue'},
+                        'success': {'color': 'green', 'bold': True},
+                        'spam': {'color': 'green', 'faint': True},
+                        'critical': {'color': 'red', 'bold': True},
+                        'error': {'color': 'red'},
+                        'debug': {'color': 'green'},
                         'warning': {'color': 'yellow'}}
-        
+
         field_styles =  {'hostname': {'color': 'magenta'},
-                         'programname': {'color': 'cyan'}, 
-                         'name': {'color': 'white'}, 
-                         'levelname': {'color': 'white', 'bold': True}, 
+                         'programname': {'color': 'cyan'},
+                         'name': {'color': 'white'},
+                         'levelname': {'color': 'white', 'bold': True},
                          'asctime': {'color': 'green'}}
-        
+
         # start logging
         loglevel = self.config['awsm system']['log_level'].upper()
 
@@ -368,6 +372,55 @@ class AWSM():
             for l in self.tmp_err:
                 self._logger.error(l)
 
+    def runawsm(self):
+        if self.do_forecast:
+            runtype = 'forecast'
+        else:
+            runtype = 'smrf'
+
+        if self.point_model:
+            self.run_point_method()
+
+        elif not self.config['isnobal restart']['restart_crash']:
+            # distribute data by running smrf
+            if self.do_smrf:
+                self.runSmrf()
+
+            # convert smrf output to ipw for iSnobal
+            if self.do_make_in:
+                self.nc2ipw(runtype)
+
+            if self.do_isnobal:
+                # run iSnobal
+                self.run_isnobal()
+
+            elif self.do_ipysnobal:
+                # run iPySnobal
+                self.run_ipysnobal()
+
+                # convert ipw back to netcdf for processing
+            if self.do_make_nc:
+                self.ipw2nc(runtype)
+        # if restart
+        else:
+            if self.do_isnobal:
+                # restart iSnobal from crash
+                self.restart_crash_image()
+                # convert ipw back to netcdf for processing
+            elif self.do_ipysnobal:
+                # run iPySnobal
+                self.run_ipysnobal()
+
+            if self.do_make_nc:
+                self.ipw2nc(runtype)
+
+        # Run iPySnobal from SMRF in memory
+        if self.do_smrf_ipysnobal:
+            if self.daily_folders:
+                self.run_awsm_daily()
+            else:
+                self.run_smrf_ipysnobal()
+
     def runSmrf(self):
         """
         Run smrf. Calls :mod: `awsm.interface.interface.smrfMEAS`
@@ -394,6 +447,23 @@ class AWSM():
         """
 
         smin.run_isnobal(self)
+
+    def run_point_method(self):
+        # write out input files
+        self.fp_in = os.path.join(self.pathi, 'snobal_inputs.txt')
+        self.fp_ppt = os.path.join(self.pathi, 'snobal_ppt.txt')
+        self.fp_ht = os.path.join(self.pathi, 'height_file.txt')
+        self.fp_sn = os.path.join(self.pathi, 'sn_file.txt')
+
+        if self.do_smrf:
+            self.runSmrf()
+
+        if self.do_make_in:
+            cvf.csv_to_snobal(self)
+
+        if self.do_isnobal:
+            # run iSnobal
+            smin.run_snobal(self)
 
     def run_smrf_ipysnobal(self):
         """
@@ -554,7 +624,7 @@ class AWSM():
                                     '(y n): ' % check_if_data)
                     else:
                         y_n = 'y'
-                        
+
                 if y_n == 'n':
                     self.tmp_err.append('Please fix the base directory'
                                         ' (path_wy) in your config file.')

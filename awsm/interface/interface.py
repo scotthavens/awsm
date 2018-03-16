@@ -290,15 +290,14 @@ def run_snobal(myawsm):
 
     '''
 
-    myawsm._logger.info('Setting up to run iSnobal')
-
     # develop the command to run the model
     myawsm._logger.debug("Developing command and running iSnobal")
 
-    """
-    Still need to get elevation
-    """
-    
+    # get elevation
+    elev = myawsm.config['topo']['point_elevation']
+    if elev is None:
+        raise IOError('No point elevation given, cannot run iSnobal')
+
     # make paths absolute if they are not
     cwd = os.getcwd()
 
@@ -307,12 +306,15 @@ def run_snobal(myawsm):
                                     myawsm.mass_thresh[1],
                                     myawsm.mass_thresh[2])
 
-    run_cmd = 'snobal -z %f -t 60 -h %s -p %s -i %s\
-              -o %s -c' % (myawsm.point_elevation,
-                           myawsm.fp_ht,
-                           myawsm.fp_ppt,
-                           myawsm.fp_in,
-                           os.path.join(myawsm.pathro, 'snobal_out'))
+    run_cmd = 'snobal -z %f -t 60 -h %s -p %s -i %s -T %s' % (elev,
+                                                              myawsm.fp_ht,
+                                                              myawsm.fp_ppt,
+                                                              myawsm.fp_in,
+                                                              mass_thresh)
+
+    run_cmd = run_cmd + ' -s %s -o %s -c' % (myawsm.fp_sn,
+                                             os.path.join(myawsm.pathro,
+                                                          'snobal_out'))
 
     # change directories, run, and move back
     myawsm._logger.debug("Running {}".format(run_cmd))
