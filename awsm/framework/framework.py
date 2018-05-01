@@ -213,6 +213,8 @@ class AWSM():
                 os.path.abspath(self.config['files']['prev_mod_file'])
         else:
             self.prev_mod_file = None
+        self.init_file = self.config['files']['init_file']
+
 
         # threads for running iSnobal
         self.ithreads = self.config['awsm system']['ithreads']
@@ -559,7 +561,7 @@ class AWSM():
                                     '(y n): ' % check_if_data)
                     else:
                         y_n = 'y'
-                        
+
                 if y_n == 'n':
                     self.tmp_err.append('Please fix the base directory'
                                         ' (path_wy) in your config file.')

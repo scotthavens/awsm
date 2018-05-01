@@ -136,6 +136,9 @@ def run_isnobal(myawsm):
     else:
         i_mask = np.ones((myawsm.ny, myawsm.nx))
 
+    init_file = os.path.join(myawsm.pathinit,
+                             'init%04d.ipw' % (offset))
+
     if offset > 0:
         # use given rougness from old init file if given
         if myawsm.roughness_init is not None:
@@ -171,8 +174,7 @@ def run_isnobal(myawsm):
 
         i_out.add_geo_hdr([myawsm.u, myawsm.v], [myawsm.du, myawsm.dv],
                           myawsm.units, myawsm.csys)
-        i_out.write(os.path.join(myawsm.pathinit,
-                                 'init%04d.ipw' % (offset)), nbits)
+        i_out.write(init_file, nbits)
 
     else:
         zs0 = np.zeros((myawsm.ny, myawsm.nx))
@@ -190,9 +192,11 @@ def run_isnobal(myawsm):
         i_out.new_band(zs0)  # 0liquid
         i_out.add_geo_hdr([myawsm.u, myawsm.v], [myawsm.du, myawsm.dv],
                           myawsm.units, myawsm.csys)
-        i_out.write(os.path.join(myawsm.pathinit,
-                                 'init%04d.ipw' % (offset)), nbits)
+        i_out.write(init_file, nbits)
 
+    if myawsm.init_file is not None:
+        myawsm._logger.warning('Using init file, NOT prev_mod_file!')
+        init_file = myawsm.init_file
     # develop the command to run the model
     myawsm._logger.debug("Developing command and running iSnobal")
     nthreads = int(myawsm.ithreads)
@@ -223,9 +227,9 @@ def run_isnobal(myawsm):
         tmstps = 1001
 
     run_cmd = 'isnobal -v -P %d -b %d -t 60 -T %s -n %d \
-    -I %s/init%04d.ipw -d %f -i %s/in' % (nthreads, myawsm.nbits,
+    -I %s -d %f -i %s/in' % (nthreads, myawsm.nbits,
                                           mass_thresh, tmstps,
-                                          myawsm.pathinit, offset,
+                                          init_file,
                                           myawsm.active_layer,
                                           myawsm.pathi)
     if offset > 0:
