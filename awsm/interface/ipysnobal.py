@@ -217,7 +217,7 @@ class QueueIsnobal(threading.Thread):
                     first_step = 1
 
             self._logger.info('running PySnobal for timestep: {}'.format(tstep))
-            rt = snobal_with_error_handle(self._logger, self.input1, self.input2,
+            rt = snobal_with_error_handle(self._logger, input1, input2,
                                           self.output_rec, self.tstep_info,
                                           self.options['constants'],
                                           self.params, first_step=first_step,
