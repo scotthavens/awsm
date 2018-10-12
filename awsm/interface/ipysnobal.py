@@ -18,6 +18,7 @@ except Exception as e:
 import pandas as pd
 import sys
 import numpy as np
+import copy
 from smrf.utils import utils
 
 try:
@@ -28,6 +29,7 @@ except:
 import threading
 from awsm.interface import initialize_model as initmodel
 from awsm.interface import pysnobal_io as io_mod
+from awsm.data.init_model import zero_crash_depths
 
 C_TO_K = 273.16
 FREEZE = C_TO_K
@@ -215,13 +217,18 @@ class QueueIsnobal(threading.Thread):
                     first_step = 1
 
             self._logger.info('running PySnobal for timestep: {}'.format(tstep))
-            rt = snobal.do_tstep_grid(input1, input2,
-                                      self.output_rec,
-                                      self.tstep_info,
-                                      self.options['constants'],
-                                      self.params,
-                                      first_step=first_step,
-                                      nthreads=self.nthreads)
+            rt = snobal_with_error_handle(self._logger, self.input1, self.input2,
+                                          self.output_rec, self.tstep_info,
+                                          self.options['constants'],
+                                          self.params, first_step=first_step,
+                                          nthreads=self.nthreads)
+            # rt = snobal.do_tstep_grid(input1, input2,
+            #                           self.output_rec,
+            #                           self.tstep_info,
+            #                           self.options['constants'],
+            #                           self.params,
+            #                           first_step=first_step,
+            #                           nthreads=self.nthreads)
 
             if rt != -1:
                 self.logger.error('ipysnobal error on time step {}, pixel {}'
@@ -394,10 +401,15 @@ class PySnobal():
 
 
         self._logger.info('running PySnobal for timestep: {}'.format(tstep))
-        rt = snobal.do_tstep_grid(self.input1, self.input2, self.output_rec,
-                                  self.tstep_info, self.options['constants'],
-                                  self.params, first_step=first_step,
-                                  nthreads=self.nthreads)
+        rt = snobal_with_error_handle(self._logger, self.input1, self.input2,
+                                      self.output_rec, self.tstep_info,
+                                      self.options['constants'],
+                                      self.params, first_step=first_step,
+                                      nthreads=self.nthreads)
+        # rt = snobal.do_tstep_grid(self.input1, self.input2, self.output_rec,
+        #                           self.tstep_info, self.options['constants'],
+        #                           self.params, first_step=first_step,
+        #                           nthreads=self.nthreads)
 
         if rt != -1:
             self.logger.error('ipysnobal error on time step {}, pixel {}'
@@ -415,3 +427,136 @@ class PySnobal():
             self.output_rec['time_since_out'] = np.zeros(self.output_rec['elevation'].shape)
 
         self.j += 1
+
+
+def snobal_with_error_handle(logger, input1, input2, output_rec, tstep_info,
+                             constants, params, first_step, nthreads):
+    """
+    Function to run snobal from pysnobal package while handling and correcting
+    some of the standard crashes that occur. Crashes can occur due to unstable
+    fluxes in a shallow snopack and/or high winds. They can also occur due to
+    sub-par input data and must be handled before program is run. This routine
+    represents some of the standard error handling by the USDA ARS NWRC snow
+    team and not a perfect solution to any error from the iSnobal core code.
+
+    Args:
+        logger:
+        input1:
+        input2:
+        output_rec:
+        tstep_info:
+        constants:
+        params:
+        first_step:
+        nthreads:
+
+    Returns:
+        rt: success or failure from snobal time step
+        nsteps_mass_change: number of consecutive succesful timesteps run with
+                            the mass changed
+
+    """
+    fn_lst = [do_nothing, handle_depth, handle_depth, handle_mass]
+    # save a copy of the tstep info
+    tstep_info_cp = copy.deepcopy(tstep_info)
+
+    for idf, fn in enumerate(fn_lst):
+        if idf == 0:
+            mass_count_change = 0
+            depth_thresh = 0.0
+        elif idf == 1:
+            mass_count_change = 0
+            depth_thresh = 0.05
+        elif idf == 2:
+            mass_count_change = 0
+            depth_thresh = 0.07
+        else:
+            mass_count_change += 1
+            depth_thresh = 0.0
+            if mass_count_change >= 73:
+                raise Exception('Too many consecutive timesteps with increased mass thresholds')
+        # print(idf, fn)
+        try:
+            # change parameters to avoid crash
+            fn(logger, output_rec, tstep_info, depth_thresh)
+            # run snobal
+            rt = snobal.do_tstep_grid(input1, input2, output_rec,
+                                      tstep_info, constants,
+                                      params, first_step=first_step,
+                                      nthreads=nthreads)
+
+            win = True
+            break
+
+        except:
+            win = False
+            pass
+
+    if not win:
+        raise Exception('Was not able to succesffuly conplete iPySnobal timestep')
+    # reset tstepinfo in case changed
+    tstep_info = tstep_info_cp
+
+    return rt
+
+
+def handle_depth(logger, output_rec, tstep_info, depth_thresh):
+    """
+    function to zero low snowpack to avoid crash
+
+    Args:
+        logger: logger instance
+        output_rec: state variables for snobal
+        tstep_info: time step params for isnobal
+        depth_thresh: threshold of depths to zero
+
+    returns:
+        Edits output_rec
+    """
+    # m_s = output_rec['m_s']
+    T_s_0 = output_rec['T_s_0']
+    T_s_l = output_rec['T_s_l']
+    T_s = output_rec['T_s']
+    h2o_sat = output_rec['h2o_sat']
+    z_s = output_rec['z_s']
+    rho = output_rec['rho']
+
+    # zero out low depths
+    new_values = zero_crash_depths(logger, depth_thresh, z_s, rho, T_s_0,
+                                   T_s_l, T_s, h2o_sat)
+
+    # update output_rec model state
+    output_rec['T_s_0'] = new_values['T_s_0']
+    output_rec['T_s_l'] = new_values['T_s_l']
+    output_rec['T_s'] = new_values['T_s']
+    output_rec['h2o_sat'] = new_values['h2o_sat']
+    output_rec['z_s'] = new_values['z_s']
+    output_rec['rho'] = new_values['rho']
+
+
+def handle_mass(logger, output_rec, tstep_info, depth_thresh):
+    """
+    function to zero low snowpack to avoid crash
+
+    Args:
+        logger: logger instance
+        output_rec: state variables for snobal
+        tstep_info: time step params for isnobal
+        depth_thresh: threshold of depths to zero
+
+    returns:
+        Edits tstep_info
+    """
+
+    # reset threasholds
+    tstep_info[NORMAL_TSTEP]['threshold'] = 60
+    tstep_info[MEDIUM_TSTEP]['threshold'] = 20
+    tstep_info[SMALL_TSTEP]['threshold'] = 10
+
+
+def do_nothing(logger, output_rec, tstep_info, depth_thresh):
+    """
+    function does nothing so snobal runs normally
+    """
+    # do nothing
+    nothing = True

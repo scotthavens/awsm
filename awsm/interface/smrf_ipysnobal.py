@@ -87,9 +87,14 @@ def run_ipysnobal(myawsm):
                     updater.do_update_pysnobal(output_rec, tstep)
                 first_step = 1
 
-        rt = snobal.do_tstep_grid(input1, input2, output_rec, tstep_info,
-                                  options['constants'], params, first_step=first_step,
-                                  nthreads=myawsm.ipy_threads)
+        rt = ipysnobal.snobal_with_error_handle(myawsm._logger, input1, input2,
+                                                output_rec, tstep_info,
+                                                options['constants'],
+                                                params, first_step=first_step,
+                                                nthreads=myawsm.ipy_threads)
+        # rt = snobal.do_tstep_grid(input1, input2, output_rec, tstep_info,
+        #                           options['constants'], params, first_step=first_step,
+        #                           nthreads=myawsm.ipy_threads)
 
         if rt != -1:
             print('ipysnobal error on time step %s, pixel %i' % (tstep, rt))
