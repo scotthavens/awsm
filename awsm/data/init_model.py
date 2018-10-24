@@ -335,14 +335,14 @@ def zero_crash_depths(logger, depth_thresh, z_s, rho, T_s_0, T_s_l, T_s, h2o_sat
     """
 
     # find pixels that need reset
-    idz = z_s < depth_thresh
+    idz = (z_s < depth_thresh) & (z_s > 0.0)
 
     # find number of pixels reset
     num_pix = len(np.where(idz)[0])
-    num_pix_tot = z_s.size
+    num_pix_tot = len(np.where(z_s > 0.0)[0])
 
     logger.warning('Zeroing depth in pixels lower than {} [m]'.format(depth_thresh))
-    logger.warning('Zeroing depth in {} out of {} total pixels'.format(num_pix, num_pix_tot))
+    logger.warning('Zeroing depth in {} out of {} snow covered pixels total pixels'.format(num_pix, num_pix_tot))
 
     z_s[idz] = 0.0
     rho[idz] = 0.0

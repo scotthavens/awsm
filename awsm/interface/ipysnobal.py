@@ -37,10 +37,13 @@ FREEZE = C_TO_K
 # Kelvin to Celcius
 K_TO_C = lambda x: x - FREEZE
 
+NORMAL_TSTEP = 1
+MEDIUM_TSTEP = 2
+SMALL_TSTEP = 3
+
 # ###############################################################
 # ########## Functions for interfacing with smrf run ############
 # ###############################################################
-
 
 def init_from_smrf(myawsm, mysmrf=None, dem=None):
     """
@@ -118,6 +121,8 @@ class QueueIsnobal(threading.Thread):
         self.nthreads = self.options['output']['nthreads']
         self.tzinfo = tzi
         self.updater = updater
+
+        self.mass_count_change = 0
 
         # get AWSM logger
         self._logger = logger
@@ -221,11 +226,11 @@ class QueueIsnobal(threading.Thread):
                     first_step = 1
 
             self._logger.info('running PySnobal for timestep: {}'.format(tstep))
-            rt = snobal_with_error_handle(self._logger, input1, input2,
+            rt, self.mass_count_change = snobal_with_error_handle(self._logger, input1, input2,
                                           self.output_rec, self.tstep_info,
                                           self.options['constants'],
-                                          self.params, first_step=first_step,
-                                          nthreads=self.nthreads)
+                                          self.params, first_step,
+                                          self.nthreads, self.mass_count_change)
             # rt = snobal.do_tstep_grid(input1, input2,
             #                           self.output_rec,
             #                           self.tstep_info,
@@ -297,6 +302,7 @@ class PySnobal():
         self.soil_temp = soil_temp
         self.nthreads = self.options['output']['nthreads']
         self.tzinfo = tzi
+        self.mass_count_change = 0.0
 
         # map function from these values to the ones requried by snobal
         self.map_val = {'air_temp': 'T_a', 'net_solar': 'S_n', 'thermal': 'I_lw',
@@ -408,11 +414,13 @@ class PySnobal():
 
 
         self._logger.info('running PySnobal for timestep: {}'.format(tstep))
-        rt = snobal_with_error_handle(self._logger, self.input1, self.input2,
-                                      self.output_rec, self.tstep_info,
-                                      self.options['constants'],
-                                      self.params, first_step=first_step,
-                                      nthreads=self.nthreads)
+        rt, self.mass_count_change = snobal_with_error_handle(self._logger,
+                                              self.input1, self.input2,
+                                              self.output_rec, self.tstep_info,
+                                              self.options['constants'],
+                                              self.params, first_step,
+                                              self.nthreads,
+                                              self.mass_count_change)
         # rt = snobal.do_tstep_grid(self.input1, self.input2, self.output_rec,
         #                           self.tstep_info, self.options['constants'],
         #                           self.params, first_step=first_step,
@@ -437,7 +445,7 @@ class PySnobal():
 
 
 def snobal_with_error_handle(logger, input1, input2, output_rec, tstep_info,
-                             constants, params, first_step, nthreads):
+                             constants, params, first_step, nthreads, mcc):
     """
     Function to run snobal from pysnobal package while handling and correcting
     some of the standard crashes that occur. Crashes can occur due to unstable
@@ -466,21 +474,23 @@ def snobal_with_error_handle(logger, input1, input2, output_rec, tstep_info,
     fn_lst = [do_nothing, handle_depth, handle_depth, handle_mass]
     # save a copy of the tstep info
     tstep_info_cp = copy.deepcopy(tstep_info)
+    mass_count_change = mcc
 
     for idf, fn in enumerate(fn_lst):
         if idf == 0:
-            mass_count_change = 0
+            # mass_count_change = 0
             depth_thresh = 0.0
         elif idf == 1:
-            mass_count_change = 0
+            # mass_count_change = 0
             depth_thresh = 0.05
         elif idf == 2:
-            mass_count_change = 0
+            # mass_count_change = 0
             depth_thresh = 0.07
-        else:
-            mass_count_change += 1
+        elif idf == 3:
+            mass_count_change += 1.0
             depth_thresh = 0.0
-            if mass_count_change >= 73:
+            # logic here is not correct to stop the count
+            if mass_count_change >= 73.0:
                 raise Exception('Too many consecutive timesteps with increased mass thresholds')
         # print(idf, fn)
         try:
@@ -492,7 +502,12 @@ def snobal_with_error_handle(logger, input1, input2, output_rec, tstep_info,
                                       params, first_step=first_step,
                                       nthreads=nthreads)
 
+            if rt != -1:
+                raise Exception('snobal crashed')
             win = True
+            # maybe this and get rid of the other lines?
+            if idf == 0:
+                mass_count_change = 0
             break
 
         except:
@@ -500,11 +515,11 @@ def snobal_with_error_handle(logger, input1, input2, output_rec, tstep_info,
             pass
 
     if not win:
-        raise Exception('Was not able to succesffuly conplete iPySnobal timestep')
+        raise Exception('Was not able to succesffuly complete iPySnobal timestep')
     # reset tstepinfo in case changed
     tstep_info = tstep_info_cp
 
-    return rt
+    return rt, mass_count_change
 
 
 def handle_depth(logger, output_rec, tstep_info, depth_thresh):
@@ -558,7 +573,9 @@ def handle_mass(logger, output_rec, tstep_info, depth_thresh):
     # reset threasholds
     tstep_info[NORMAL_TSTEP]['threshold'] = 60
     tstep_info[MEDIUM_TSTEP]['threshold'] = 20
-    tstep_info[SMALL_TSTEP]['threshold'] = 10
+    tstep_info[SMALL_TSTEP]['threshold'] = 5
+
+    logger.info('Resetting mass threshold in PySnobal for error handling')
 
 
 def do_nothing(logger, output_rec, tstep_info, depth_thresh):

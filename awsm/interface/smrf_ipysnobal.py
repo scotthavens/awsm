@@ -54,6 +54,8 @@ def run_ipysnobal(myawsm):
     output_rec['current_time'] = step_time * np.ones(output_rec['elevation'].shape)
     output_rec['time_since_out'] = timeSinceOut * np.ones(output_rec['elevation'].shape)
 
+    mass_count_change = 0
+
     myawsm._logger.info('getting inputs for first timestep')
     if myawsm.forcing_data_type == 'netcdf':
         force = io_mod.open_files_nc(myawsm)
@@ -89,11 +91,13 @@ def run_ipysnobal(myawsm):
                     updater.do_update_pysnobal(output_rec, tstep)
                 first_step = 1
 
-        rt = ipysnobal.snobal_with_error_handle(myawsm._logger, input1, input2,
-                                                output_rec, tstep_info,
-                                                options['constants'],
-                                                params, first_step=first_step,
-                                                nthreads=myawsm.ipy_threads)
+        rt, mass_count_change = ipysnobal.snobal_with_error_handle(myawsm._logger,
+                                                        input1, input2,
+                                                        output_rec, tstep_info,
+                                                        options['constants'],
+                                                        params, first_step,
+                                                        myawsm.ipy_threads,
+                                                        mass_count_change)
         # rt = snobal.do_tstep_grid(input1, input2, output_rec, tstep_info,
         #                           options['constants'], params, first_step=first_step,
         #                           nthreads=myawsm.ipy_threads)
