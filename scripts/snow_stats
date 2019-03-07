@@ -1,0 +1,94 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import pandas as pd
+import numpy as np
+import os
+import argparse
+import netCDF4 as nc
+
+
+def run():
+
+    parser = argparse.ArgumentParser(description='Basic spatial math for snowpack files.')
+    parser.add_argument('-f', '--fp', type=str, dest='fp', required=True,
+                        help='Path to NetCDF file')
+    parser.add_argument('--operation', '-o', type=str, nargs="+",
+                        dest='ops', required=True, default='sum',
+                        help='Operations to use on the file. Options include, sum, mean, median')
+    # parser.add_argument('--taf', '-t', required=False,
+    #                     dest='taf', action='store_true',
+    #                     help='If you want to convert total mm to Thousand Acre Feet')
+    parser.add_argument('--i_time', '-i', type=int, default=0, dest='itx',
+                        help='time index for netcdf variable')
+    parser.add_argument('--band', '-b', type=str,
+                        required=True, dest='band',
+                        help='band (variable) on which to use operations')
+    parser.add_argument('--mask', '-m', type=str, default=None, dest='mask',
+                        help='path to netcdf file with mask')
+
+    args = parser.parse_args()
+    fp = args.fp
+    ops = args.ops
+    # taf = args.taf
+    itx = args.itx
+    band = args.band
+    mask = args.mask
+
+    allowed = ['sum', 'mean', 'median']
+
+    ops = [op.lower() for op in ops]
+
+    # check operations
+    for op in ops:
+        if op not in allowed:
+            raise IOError('{} is not an allowed operation'.format(op))
+
+    # check file
+    if not os.path.isfile(fp):
+        raise IOError('Not a correct path to netcdf file')
+
+    # get variable
+    ds = nc.Dataset(fp, 'r')
+    # check variable
+    if band not in ds.variables.keys():
+        raise ValueError('{} not in netcdf variables'.format(band))
+    # get data at index
+    data = ds.variables[band][itx,:]
+    x = ds.variables['x'][:]
+    y = ds.variables['y'][:]
+    dx = np.abs(x[1] - x[0])
+    dy = np.abs(y[0] - y[1])
+    # close file
+    ds.close()
+
+    # mask if needed
+    if mask is not None:
+        if os.path.isfile(mask):
+            dsm = nc.Dataset(mask, 'r')
+            m = dsm.variables['mask'][:]
+            data = data*m
+        else:
+            raise IOError('mask file is incorrect')
+
+    for op in ops:
+        if op == "sum":
+            tot = np.nansum(data)
+            print('Sum of {} is:\t\t{}'.format(band, tot))
+            # if taf and band in ['specific_mass', 'SWI']:
+            if band in ['specific_mass', 'SWI']:
+                # convert to thousand acre feet
+                if dx != dy:
+                    raise ValueError('dx and dy are not equal')
+                tot_af = dx**2 * (tot/1000.0) * 0.000810714 / 1000.0
+                print('Sum of {} in TAF is:\t\t{}'.format(band, tot_af))
+        if op == 'median':
+            med = np.nanmedian(data)
+            print('Median of {} is:\t\t{}'.format(band, med))
+        if op == 'mean':
+            mn = np.nanmean(data)
+            print('Mean of {} is:\t\t{}'.format(band, mn))
+
+
+if __name__ == '__main__':
+    run()
