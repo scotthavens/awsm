@@ -165,7 +165,7 @@ def output_files(options, init, start_date, myawsm):
         em.createDimension('x', len(init['x']))
 
         # create some variables
-        em.createVariable('time', 'f', dimensions[0])
+        em.createVariable('time', 'i', dimensions[0])
         em.createVariable('y', 'f', dimensions[1])
         em.createVariable('x', 'f', dimensions[2])
 
@@ -238,7 +238,7 @@ def output_files(options, init, start_date, myawsm):
         snow.createDimension('x', len(init['x']))
 
         # create some variables
-        snow.createVariable('time', 'f', dimensions[0])
+        snow.createVariable('time', 'i', dimensions[0])
         snow.createVariable('y', 'f', dimensions[1])
         snow.createVariable('x', 'f', dimensions[2])
 
