@@ -67,11 +67,13 @@ def run():
         if os.path.isfile(mask):
             dsm = nc.Dataset(mask, 'r')
             m = dsm.variables['mask'][:]
-            data = data*m
+            data[m==0] = np.nan
         else:
             raise IOError('mask file is incorrect')
 
     for op in ops:
+        idnan = np.isnan(data)
+        data_nonan = data[~idnan]
         if op == "sum":
             tot = np.nansum(data)
             print('Sum of {} is:\t\t{}'.format(band, tot))
@@ -83,10 +85,10 @@ def run():
                 tot_af = dx**2 * (tot/1000.0) * 0.000810714 / 1000.0
                 print('Sum of {} in TAF is:\t\t{}'.format(band, tot_af))
         if op == 'median':
-            med = np.nanmedian(data)
+            med = np.median(data_nonan)
             print('Median of {} is:\t\t{}'.format(band, med))
         if op == 'mean':
-            mn = np.nanmean(data)
+            mn = np.nanmean(data_nonan)
             print('Mean of {} is:\t\t{}'.format(band, mn))
 
 
